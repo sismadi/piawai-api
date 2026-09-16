@@ -1,0 +1,36 @@
+name = "cms-api"
+main = "worker.js"
+compatibility_date = "2026-09-15"
+
+# ------------------------------------------------------------
+# D1
+# ------------------------------------------------------------
+[[d1_databases]]
+binding = "DB"
+database_name = "cms-db"
+database_id = "fb30cb47-9d7a-4ba4-b263-09c4e1f33d3f"
+
+# ------------------------------------------------------------
+# Origin frontend yang boleh memanggil API ini (CORS).
+# Versi lama memakai Access-Control-Allow-Origin: * — sekarang
+# hanya origin di daftar ini yang mendapat header izin.
+# Pisahkan dengan koma kalau lebih dari satu.
+# ------------------------------------------------------------
+[vars]
+ALLOWED_ORIGINS = "https://cms.piawai.id"
+
+# ------------------------------------------------------------
+# SECRET — JANGAN pernah ditulis di file ini atau di repo mana pun.
+# Set sekali lewat CLI:
+#
+#   wrangler secret put SESSION_SECRET
+#     -> string acak panjang (min. 32 karakter). Kunci HMAC untuk
+#        menandatangani token sesi DAN token captcha matematika (lihat
+#        signToken/verifyToken di worker.js — tidak perlu secret
+#        terpisah untuk captcha). Kalau diganti, semua sesi yang
+#        sedang berjalan otomatis invalid (itu cara mencabut sesi massal).
+#        Membuat nilainya:  openssl rand -base64 48
+#
+# Worker menolak login/registrasi kalau secret ini belum ada
+# (fail-closed) — bukan diam-diam berjalan tanpa captcha.
+# ------------------------------------------------------------

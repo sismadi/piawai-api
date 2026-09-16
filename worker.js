@@ -34,7 +34,7 @@
 //
 // Secret/variable yang WAJIB di-set (lihat README.md):
 //   wrangler secret put SESSION_SECRET
-//   (opsional) vars ALLOWED_ORIGINS = "https://cms.piawai.id"
+//   (opsional) vars ALLOWED_ORIGINS = "https://piawai.id"
 // ============================================================
 
 // ------------------------------------------------------------

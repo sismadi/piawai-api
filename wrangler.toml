@@ -17,7 +17,7 @@ database_id = "db61d0a8-9806-4666-99fd-a994582277c9"
 # Pisahkan dengan koma kalau lebih dari satu.
 # ------------------------------------------------------------
 [vars]
-ALLOWED_ORIGINS = "https://cms.piawai.id"
+ALLOWED_ORIGINS = "https://piawai.id"
 
 # ------------------------------------------------------------
 # SECRET — JANGAN pernah ditulis di file ini atau di repo mana pun.

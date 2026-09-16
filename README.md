@@ -122,9 +122,14 @@ wrangler deploy
 
 Untuk database yang SUDAH berjalan (ada isi yang tidak boleh hilang),
 JANGAN jalankan `schema.sql` — berkas itu diawali `DROP TABLE`. Pakai
-berkas migrasi yang hanya menambah tabel `halaman` & `menu`:
+berkas migrasi:
 ```
+# belum punya tabel halaman/menu sama sekali:
 wrangler d1 execute <NAMA_DB> --file=migration_halaman_menu.sql
+
+# SUDAH pernah menjalankan migrasi di atas versi sebelumnya
+# (tabel halaman ada, tapi belum ada kolom tataLetak/blok):
+wrangler d1 execute <NAMA_DB> --file=migration_halaman_blok.sql
 ```
 Catat URL yang dihasilkan (mis. `https://cms-api.<akun>.workers.dev`).
 
@@ -151,6 +156,33 @@ sengaja dipisah rapi, bukan dicampur:
 itu sendiri, bukan tulisan seseorang. Kalau diberi `cmsId`, pertanyaan
 "halaman milik siapa yang tampil di `/`" tidak punya jawaban pasti
 begitu ada penulis kedua.
+
+### Dua tata letak halaman
+
+Kolom `halaman.tataLetak` menentukan bagaimana isinya dirender:
+
+| Tata letak | Kolom isi | Cocok untuk |
+|---|---|---|
+| `konten` | `konten` (HTML) | halaman teks panjang: Tentang, kebijakan, panduan |
+| `seksi` | `blok` (JSON) | landing page: hero + fitur + penutup |
+
+Tata letak `seksi` dirender lewat komponen `hero`, `features`, dan
+`articleFull` di `cms-app/engine.js` — komponen yang sama yang dipakai
+landing page statis di aplikasi Piawai lain, jadi tampilannya konsisten
+antar-produk. Kedua kolom isi sengaja dipertahankan berdampingan: berganti
+tata letak tidak menghapus isi yang sudah ditulis dalam bentuk yang lain.
+
+Struktur `blok` divalidasi ketat di `normalizeBlok()` — seksi di luar tiga
+nama itu ditolak, tag HTML di judul/deskripsi dibuang, kelas ikon harus
+berpola `di-namaikon`, dan setiap tautan (tombol hero, tautan fitur, baris
+`link:` di penutup) harus menuju rute terdaftar atau `laman/<slug>`.
+Alasannya: komponen render menyisipkan nilai itu langsung ke template HTML
+dan ke atribut `onclick`, jadi bentuk yang tidak dikenal lebih baik ditolak
+di pintu masuk daripada dibersihkan belakangan.
+
+Admin tidak pernah mengetik JSON — form "Kelola Halaman" memakai isian
+biasa, dengan fitur ditulis satu per baris berformat
+`ikon | judul | deskripsi | teks tautan | tujuan tautan`.
 
 **Slug `beranda` dikunci.** Halaman berslug `beranda` adalah yang
 dirender di alamat utama. Slug-nya tidak bisa diganti, tidak bisa
@@ -183,7 +215,8 @@ membingungkan saat disunting.
 3. Untuk submenu: buat dulu satu menu bertipe **Induk** (mis. "Produk
    PkM"), lalu pada menu anak pilih induk tersebut di field **Induk**.
 4. Halaman depan disunting lewat baris berslug `beranda` di Kelola
-   Halaman — judul dan isinya bebas, slug-nya terkunci.
+   Halaman — judul dan isinya bebas, slug-nya terkunci. Pilih tata letak
+   **Seksi**, lalu isi bagian B pada form (hero, fitur, penutup).
 
 Seed awal sudah menyertakan halaman `beranda`, `tentang`, `cms-piawai`,
 `lms-piawai`, `pos-piawai` serta menu Beranda / Produk PkM (3 submenu) /

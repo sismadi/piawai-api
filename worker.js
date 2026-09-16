@@ -71,7 +71,7 @@ const BLOCKED_TABLES = new Set(['users', 'komentar']);
 const WRITABLE_COLUMNS = {
   post: ['slug', 'judul', 'ringkasan', 'konten', 'coverImage', 'kategori', 'tags', 'status', 'publishedAt'],
   cms: ['nama', 'bio', 'avatarUrl'],
-  halaman: ['slug', 'judul', 'ringkasan', 'konten', 'coverImage', 'status', 'urutan'],
+  halaman: ['slug', 'judul', 'ringkasan', 'konten', 'coverImage', 'status', 'urutan', 'tataLetak', 'blok'],
   menu: ['parentId', 'label', 'tipe', 'target', 'urutan', 'status'],
 };
 // Kolom `cms` yang hanya boleh diubah superadmin.
@@ -94,6 +94,138 @@ const MENU_TIPE = new Set(['halaman', 'rute', 'url', 'induk']);
 // sebagai tautan mati yang baru ketahuan setelah pengunjung mengkliknya.
 // Daftar ini harus sejalan dengan web.routes di cms-app (lihat pages/*.js).
 const MENU_ROUTES = new Set(['home', 'artikel-list', 'penulis', 'login', 'register']);
+
+// ------------------------------------------------------------
+// Susunan SEKSI untuk halaman bertata-letak 'seksi' (landing page).
+// ------------------------------------------------------------
+// Disimpan sebagai JSON di kolom `halaman.blok`, dirender di frontend
+// oleh components.hero / .features / .articleFull (cms-app/engine.js).
+//
+// Kenapa divalidasi seketat ini, bukan disimpan apa adanya? Karena
+// komponen-komponen itu menyisipkan nilainya LANGSUNG ke template HTML
+// (mis. `<h1>${d.title}</h1>`, `onclick="web.navigate('${cta.link}')"`).
+// Frontend memang meng-escape isinya sebelum dirender (lihat
+// resolveHalaman di pages/public.js), tapi mengandalkan satu lapis saja
+// untuk data yang bentuknya bebas itu rapuh: struktur yang tidak dikenal
+// lebih baik ditolak di pintu masuk daripada dibersihkan belakangan.
+const SECTION_TIPE = new Set(['hero', 'features', 'articleFull']);
+const MAX_SECTIONS = 12;
+const MAX_FEATURE_ITEMS = 12;
+const MAX_LINES = 30;
+// Kelas ikon dari svg.js (mis. 'di-cart'). Nama ikon yang tidak ada
+// tinggal tidak tergambar — tidak berbahaya, jadi cukup pola, bukan
+// daftar nama yang harus ikut diperbarui tiap svg.js bertambah.
+const ICON_RE = /^di-[a-z0-9-]{1,24}$/;
+
+/** Target navigasi internal yang boleh dituju tombol/tautan di dalam seksi. */
+function safeNavTarget(value) {
+  const v = String(value || '').trim();
+  if (MENU_ROUTES.has(v)) return v;
+  const laman = v.match(/^laman\/([a-z0-9][a-z0-9-]{1,29})$/);
+  if (laman) return v;
+  return null;
+}
+
+/** Teks polos untuk seksi: tanpa tag sama sekali, panjang dibatasi. */
+function plainText(value, max) {
+  return String(value ?? '').replace(/<[^>]*>/g, '').trim().slice(0, max);
+}
+
+/** Validasi & bersihkan satu baris `articleFull.lines` (format lineRenderer). */
+function normalizeLine(raw) {
+  const line = String(raw ?? '').trim();
+  if (!line) return null;
+  if (line === '---') return '---';
+
+  const heading = line.match(/^(#{2,3})\s+(.*)$/);
+  if (heading) return `${heading[1]} ${plainText(heading[2], 120)}`;
+
+  const link = line.match(/^link:([^:]{1,60}):(.+)$/);
+  if (link) {
+    const target = safeNavTarget(link[2]);
+    if (!target) return null; // tautan ke rute tak dikenal dibuang, bukan disimpan sebagai tautan mati
+    return `link:${plainText(link[1], 60)}:${target}`;
+  }
+  return plainText(line, 300);
+}
+
+/**
+ * Validasi kolom `blok`. Menerima array (atau string JSON) lalu
+ * mengembalikan STRING JSON yang siap disimpan — atau melempar HttpError
+ * kalau bentuknya tidak dikenal. Field di luar daftar dibuang diam-diam,
+ * pola yang sama dengan pickColumns untuk kolom tabel.
+ */
+function normalizeBlok(input) {
+  if (input === null || input === '') return null;
+
+  let arr = input;
+  if (typeof arr === 'string') {
+    try { arr = JSON.parse(arr); }
+    catch (e) { throw new HttpError(400, 'Susunan seksi halaman bukan JSON yang sah.'); }
+  }
+  if (!Array.isArray(arr)) throw new HttpError(400, 'Susunan seksi halaman harus berupa daftar.');
+  if (arr.length > MAX_SECTIONS) throw new HttpError(400, `Maksimal ${MAX_SECTIONS} seksi per halaman.`);
+
+  const out = [];
+  for (const raw of arr) {
+    const section = String(raw?.section || '');
+    if (!SECTION_TIPE.has(section)) {
+      throw new HttpError(400, `Seksi '${section}' tidak dikenal. Pilihan: ${[...SECTION_TIPE].join(', ')}.`);
+    }
+
+    if (section === 'hero') {
+      const blok = {
+        section, title: plainText(raw.title, 120),
+        tagline: plainText(raw.tagline, 120),
+        description: plainText(raw.description, 400),
+      };
+      if (!blok.title) throw new HttpError(400, 'Seksi hero wajib punya judul.');
+      const badges = Array.isArray(raw.badges) ? raw.badges : [];
+      blok.badges = badges.slice(0, 6).map(b => plainText(b, 40)).filter(Boolean);
+      const icon = String(raw.imgClass || '').trim();
+      if (icon && !ICON_RE.test(icon)) throw new HttpError(400, 'Kelas ikon hero harus berbentuk "di-namaikon".');
+      if (icon) blok.imgClass = icon;
+      if (raw.cta && (raw.cta.text || raw.cta.link)) {
+        const link = safeNavTarget(raw.cta.link);
+        if (!link) throw new HttpError(400, `Tujuan tombol hero tidak dikenal. Pakai salah satu dari: ${[...MENU_ROUTES].join(', ')}, atau "laman/<slug>".`);
+        blok.cta = { text: plainText(raw.cta.text, 60) || 'Selengkapnya', link };
+      }
+      out.push(blok);
+      continue;
+    }
+
+    if (section === 'features') {
+      const items = Array.isArray(raw.items) ? raw.items : [];
+      if (items.length > MAX_FEATURE_ITEMS) throw new HttpError(400, `Maksimal ${MAX_FEATURE_ITEMS} item per seksi fitur.`);
+      const bersih = [];
+      for (const it of items) {
+        const title = plainText(it?.title, 80);
+        if (!title) continue; // item tanpa judul tidak menampilkan apa pun — buang
+        const item = { title, content: plainText(it?.content, 300) };
+        const icon = String(it?.icon || '').trim();
+        if (icon && !ICON_RE.test(icon)) throw new HttpError(400, `Kelas ikon "${icon}" harus berbentuk "di-namaikon".`);
+        if (icon) item.icon = icon;
+        const target = it?.linkTarget ? safeNavTarget(it.linkTarget) : null;
+        if (it?.linkTarget && !target) throw new HttpError(400, `Tujuan tautan fitur "${title}" tidak dikenal.`);
+        if (target) { item.linkTarget = target; item.linkText = plainText(it.linkText, 40) || 'Selengkapnya'; }
+        bersih.push(item);
+      }
+      if (!bersih.length) throw new HttpError(400, 'Seksi fitur wajib punya minimal satu item berjudul.');
+      out.push({ section, items: bersih });
+      continue;
+    }
+
+    // articleFull
+    const lines = (Array.isArray(raw.lines) ? raw.lines : []).slice(0, MAX_LINES)
+      .map(normalizeLine).filter(Boolean);
+    const subtitle = plainText(raw.subtitle, 120);
+    if (!subtitle && !lines.length) continue; // seksi kosong tidak perlu disimpan
+    out.push({ section, subtitle, lines });
+  }
+
+  if (!out.length) return null;
+  return JSON.stringify(out);
+}
 
 // ------------------------------------------------------------
 // Util dasar
@@ -488,6 +620,16 @@ function normalizeHalaman(body, existing) {
     const n = Number(data.urutan);
     patch.urutan = Number.isFinite(n) ? Math.trunc(n) : 0;
   }
+  if (data.tataLetak !== undefined) patch.tataLetak = data.tataLetak === 'seksi' ? 'seksi' : 'konten';
+  if (data.blok !== undefined) patch.blok = normalizeBlok(data.blok);
+
+  // Halaman bertata-letak 'seksi' tanpa satu pun seksi akan tampil sebagai
+  // halaman kosong — tolak di sini, selagi admin masih di formnya.
+  const tataLetak = patch.tataLetak ?? existing?.tataLetak ?? 'konten';
+  const blok = patch.blok !== undefined ? patch.blok : existing?.blok;
+  if (tataLetak === 'seksi' && !blok) {
+    throw new HttpError(400, 'Tata letak "seksi" membutuhkan minimal satu seksi (hero, features, atau articleFull).');
+  }
   // Halaman depan HARUS selalu tayang — kalau boleh di-draft, URL "/"
   // ikut kosong padahal halamannya masih ada (bingung mencarinya).
   if (existing?.slug === HOME_SLUG && patch.status === 'draft') {
@@ -595,6 +737,7 @@ async function handleSiteTable(request, env, table, id, session) {
         id: genId('hal'), slug: patch.slug, judul: patch.judul,
         ringkasan: patch.ringkasan ?? '', konten: patch.konten ?? '',
         coverImage: patch.coverImage ?? null,
+        tataLetak: patch.tataLetak ?? 'konten', blok: patch.blok ?? null,
         status: patch.status ?? 'draft', urutan: patch.urutan ?? 0,
         createdAt: now, updatedAt: now,
       }
@@ -878,13 +1021,18 @@ async function handlePublic(request, env) {
   if (view === 'halaman') {
     const slug = (url.searchParams.get('slug') || HOME_SLUG).toLowerCase();
     const halaman = await db.prepare(
-      `SELECT slug, judul, ringkasan, konten, coverImage, updatedAt FROM halaman
+      `SELECT slug, judul, ringkasan, konten, coverImage, tataLetak, blok, updatedAt FROM halaman
        WHERE slug = ? AND status = 'publish'`
     ).bind(slug).first();
     if (!halaman) throw new HttpError(404, `Halaman "${slug}" tidak ditemukan atau belum dipublikasikan.`);
     // Sanitasi ulang saat disajikan — sama seperti `post.konten`, supaya
     // baris yang terlanjur tersimpan lewat jalur lain tetap aman dibaca.
     halaman.konten = sanitizeHtml(halaman.konten);
+    // `blok` disimpan sebagai string JSON; kirim sudah ter-parse supaya tiap
+    // klien tidak perlu mengulang parsing (dan menangani JSON rusak) sendiri.
+    // Divalidasi ulang saat disajikan, sama alasannya dengan sanitasi konten:
+    // baris lama yang terlanjur tersimpan lewat jalur lain ikut tersaring.
+    halaman.blok = halaman.blok ? JSON.parse(normalizeBlok(halaman.blok) || 'null') : null;
     return json({ halaman });
   }
 

@@ -300,5 +300,52 @@ ok('artikel-list tidak memuat draft', !r.data.posts.some(p => p.slug === 'draft-
 r = await call(`/api?table=halaman&id=${halDraftId}`, { method: 'DELETE', token: tokenSuper });
 ok('hapus halaman draft -> 200', r.status === 200);
 
+console.log('\n== 12d. Susunan seksi landing page (blok) ==');
+r = await call('/public?view=halaman');
+ok('beranda memakai tata letak seksi', r.data.halaman.tataLetak === 'seksi', r.data.halaman.tataLetak);
+ok('blok terkirim sudah ter-parse jadi array', Array.isArray(r.data.halaman.blok), typeof r.data.halaman.blok);
+ok('urutan seksi hero -> features -> articleFull',
+  r.data.halaman.blok.map(b => b.section).join(',') === 'hero,features,articleFull',
+  JSON.stringify(r.data.halaman.blok.map(b => b.section)));
+ok('seksi fitur memuat 6 item', r.data.halaman.blok[1].items.length === 6);
+
+const blokBaru = (patch) => ({
+  slug: 'uji-seksi', judul: 'Uji Seksi', status: 'publish', tataLetak: 'seksi',
+  blok: [{ section: 'hero', title: 'Judul', cta: { text: 'Ayo', link: 'register' } }], ...patch,
+});
+r = await call('/api?table=halaman', { method: 'POST', token: tokenSuper, body: blokBaru() });
+ok('buat halaman bertata-letak seksi -> 201', r.status === 201, JSON.stringify(r.data));
+const halSeksiId = r.data.id;
+
+r = await call('/api?table=halaman', { method: 'POST', token: tokenSuper, body: blokBaru({ slug: 'uji-1', blok: [{ section: 'evil', title: 'x' }] }) });
+ok('seksi tak dikenal ditolak -> 400', r.status === 400, JSON.stringify(r.data));
+r = await call('/api?table=halaman', { method: 'POST', token: tokenSuper, body: blokBaru({ slug: 'uji-2', blok: [{ section: 'hero', title: 'x', cta: { text: 'y', link: 'dashboard' } }] }) });
+ok('tujuan tombol di luar allowlist ditolak -> 400', r.status === 400);
+r = await call('/api?table=halaman', { method: 'POST', token: tokenSuper, body: blokBaru({ slug: 'uji-3', blok: [{ section: 'hero', title: 'x', imgClass: 'di-a" onload="alert(1)' }] }) });
+ok('kelas ikon berisi kutip/atribut ditolak -> 400', r.status === 400);
+r = await call('/api?table=halaman', { method: 'POST', token: tokenSuper, body: blokBaru({ slug: 'uji-4', tataLetak: 'seksi', blok: null }) });
+ok('tata letak seksi tanpa seksi ditolak -> 400', r.status === 400, JSON.stringify(r.data));
+
+r = await call('/api?table=halaman', { method: 'POST', token: tokenSuper, body: blokBaru({
+  slug: 'uji-bersih',
+  blok: [
+    { section: 'hero', title: '<img src=x onerror=alert(1)>Judul', badges: ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'] },
+    { section: 'features', items: [{ icon: 'di-cart', title: 'Ada', content: 'isi' }, { title: '', content: 'tanpa judul' }] },
+    { section: 'articleFull', subtitle: 'Penutup', lines: ['biasa', 'link:Sah:register', 'link:Palsu:javascript:alert(1)', '---'] },
+  ],
+}) });
+ok('halaman campuran tersimpan -> 201', r.status === 201, JSON.stringify(r.data));
+const bersih = JSON.parse(r.data.blok);
+ok('tag HTML di judul hero dibuang', !/[<>]/.test(bersih[0].title), bersih[0].title);
+ok('badge dibatasi 6', bersih[0].badges.length === 6);
+ok('item fitur tanpa judul dibuang', bersih[1].items.length === 1);
+ok('baris link ke tujuan tak sah dibuang', !bersih[2].lines.some(l => l.includes('javascript')), JSON.stringify(bersih[2].lines));
+ok('baris link sah & pemisah dipertahankan',
+  bersih[2].lines.includes('link:Sah:register') && bersih[2].lines.includes('---'), JSON.stringify(bersih[2].lines));
+
+r = await call(`/api?table=halaman&id=${halSeksiId}`, { method: 'PATCH', token: tokenSuper, body: { tataLetak: 'konten', konten: '<p>teks</p>' } });
+ok('berganti ke tata letak konten tetap boleh', r.status === 200, JSON.stringify(r.data));
+ok('blok lama tidak ikut terhapus saat ganti tata letak', !!r.data.blok);
+
 console.log(`\n=== ${pass} lulus, ${fail} gagal ===`);
 process.exit(fail ? 1 : 0);

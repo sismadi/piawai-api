@@ -1,4 +1,4 @@
-name = "cms-api"
+name = "piawai-api"
 main = "worker.js"
 compatibility_date = "2026-09-15"
 
@@ -7,8 +7,8 @@ compatibility_date = "2026-09-15"
 # ------------------------------------------------------------
 [[d1_databases]]
 binding = "DB"
-database_name = "cms-db"
-database_id = "fb30cb47-9d7a-4ba4-b263-09c4e1f33d3f"
+database_name = "piawai-db"
+database_id = "db61d0a8-9806-4666-99fd-a994582277c9"
 
 # ------------------------------------------------------------
 # Origin frontend yang boleh memanggil API ini (CORS).
@@ -17,7 +17,7 @@ database_id = "fb30cb47-9d7a-4ba4-b263-09c4e1f33d3f"
 # Pisahkan dengan koma kalau lebih dari satu.
 # ------------------------------------------------------------
 [vars]
-ALLOWED_ORIGINS = "https://cms.piawai.id"
+ALLOWED_ORIGINS = "https://piawai.id"
 
 # ------------------------------------------------------------
 # SECRET — JANGAN pernah ditulis di file ini atau di repo mana pun.
